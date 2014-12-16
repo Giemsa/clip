@@ -9,6 +9,7 @@
 		clip::Option<int> arg(
 			'n',			   // label(short name) specified like '-n'
 			"number",		   // label(long name) specified like '--number'
+			"number",        // argument name(used by showing usage)
 			"number argument"  // description
 			// ,100			   // default value
 		);
@@ -62,8 +63,8 @@
  About Option\<bool\>, please refer to the following section.  
 We present more example.
 
-	clip::Option<int> a('a', "aaa", "desc");
-	clip::Option<double> b('b', "bbb", "desc");
+	clip::Option<int> a('a', "aaa", "aaa", "desc");
+	clip::Option<double> b('b', "bbb", "bbb", "desc");
 	clip::Parser parser;
 	parser.add(a, b);
 	const std::vector<const char *> &args = parser.getUnlabeldArgs();
@@ -96,13 +97,23 @@ We present more example.
 
 	./App -a -b -c
 
+ Option\<bool\> is a bit different from Option\<T\>. The constructor of Option\<bool\> does not need "name" because it is not used in showing usage.
+
+	clip::Option<bool> arg(
+		'a',            // label
+		"arg",          // label
+		                // name is not needed!
+		"bool argument" // description
+	):	
+
 ### Option\<std::vector\<T\> \>
  If you specify std::vector\<T\> to template argument of Option\<T\>, this option is multiple argument option.
 
 	clip::Option<std::vector<int> > arg(
 		'n',
 		"numbers",
-		" multiple number argument"
+		"numbers",
+		"multiple number argument"
 	);
 
  This option accepts following argument.
@@ -113,7 +124,10 @@ We present more example.
 
 	const std::vector<int> &values = arg.getValue();
 	// values = (10, 20, 30)
- 
+
+## Example
+ See "main.cpp" 
+
 ## License
 This software is released under the zlib License
  
