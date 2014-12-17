@@ -4,31 +4,40 @@
  
 ## How to use
 1. Include "clip.hpp" on your project.
-2. Define labels using Option\<T\>
+2. Define options using Option\<T\>
 
-		clip::Option<int> arg(
-			'n',			   // label(short name) specified like '-n'
-			"number",		   // label(long name) specified like '--number'
-			"number",        // argument name(used by showing usage)
-			"number argument"  // description
-			// ,100			   // default value
+		clip::Option<int> option(
+			'n',			// label(short name) specified like '-n'
+			"number",		// label(long name) specified like '--number'
+			"number",		// argument name(used by showing usage)
+			"number option" // description
+			// ,100			// default value
 		);
 	 If you specify default value, the option is optional. This example's option accepts only integer. The template argument means the type it accepts.
-3. Create Parser object
+3. Define arguments using Argument\<T\>
+
+		clip::Argument<std::string> arg(
+			"arg",				 // name
+			"string argument",   // description
+			// , "Hello, World!" // default value 
+		);
+	If you specify third argument, the argument is optional, the same as option.
+
+4. Create Parser object
 
 		clip::Parser parser("this is test app", true);
 	  The first argument is description of this application, used by "--help". And second argument is a setting whether clip shows errors on stdout.
-4. Add options in the parser
+5. Add options and arguments to the parser
 
-		parser.add(arg);
+		parser.add(option, arg);
 
 	 If you use compiler that supports C++11, "add" is defined as variadic template function. So you can add some options at one time. If your compiler does not support C++11 or you do not want to use C++11, "add" has only one argument. However, you can add many options to parser using method chain because "add" returns parser object itself. 
-5. Parse passed arguments
+6. Parse passed arguments
 
 		const bool success = parser.parse(argc, argv);
 	"parse" returns result of parsing. If it returns false, some parse error occurred. If you set true at the second argument of Parser's constructor, parse shows errors on stderr automatically.
 
-6. Get Results  
+7. Get option values  
 	 If parsing succeeded, you can get values specified as command line arguments. There are two ways to get result.  
 	 First, you get value from Option\<T\> object. 
 
@@ -37,15 +46,21 @@
 	"getValue" method returns the value which type is T. T is int on this example, so "getValue" returns int type value. 
 	 Second, you can also get value from Parser object.
 
-		const int value = parser.getValue<int>(0); // 0 means getting first argument
+		const int value = parser.getOption<int>(0); // 0 means getting first argument
 
-	 Parser::getValue\<T\>(N) returns the (N)th argument as type T. In addition to this, there are two ways to get value from Parser object, find by short name or long name.
+	 Parser::getOption\<T\>(N) returns the (N)th argument as type T. In addition to this, there are two ways to get value from Parser object, find by short name or long name.
 
 		const int value = parser.getValue<int>('n');
 		const int value = parser.getValue<int>('number');
-7. Get Unlabeled arguments
+8. Get argument values  
+	You can also get argument value from Argument\<T\> object.
 
-		const std::vector<const char *> &unlabeled = parser.getUnlabeledArgs();
+		const std::string &value = arg.getValue();
+
+	Or you can get from Parser::getArgument\<T\>()
+
+		const std::string &value = parser.getArgument<std::string>(0);
+		const std::string &value = parser.getArgument<std::string><("arg");
 
 ## How to pass arguments
  clip supports only unix style options.
@@ -65,13 +80,14 @@ We present more example.
 
 	clip::Option<int> a('a', "aaa", "aaa", "desc");
 	clip::Option<double> b('b', "bbb", "bbb", "desc");
+	clip::Argument<std::vector<std::string>> args("args", "desc");
 	clip::Parser parser;
-	parser.add(a, b);
-	const std::vector<const char *> &args = parser.getUnlabeldArgs();
+	parser.add(a, b, args);
+	const std::vector<std::string> &args = args.getValue();
 
  This code can parse following options.
 
-	./App -a 10 --bbb 20.5 hello
+	./App -a 10 --bbb 20.5 hello world
 
 
 ## Show usage
@@ -100,9 +116,9 @@ We present more example.
  Option\<bool\> is a bit different from Option\<T\>. The constructor of Option\<bool\> does not need "name" because it is not used in showing usage.
 
 	clip::Option<bool> arg(
-		'a',            // label
-		"arg",          // label
-		                // name is not needed!
+		'a',			// label
+		"arg",		  // label
+						// name is not needed!
 		"bool argument" // description
 	):	
 
@@ -124,6 +140,12 @@ We present more example.
 
 	const std::vector<int> &values = arg.getValue();
 	// values = (10, 20, 30)
+
+## Argument
+### Argument\<T\>
+ Argument\<T\> is similer to Option\<T\>, but there is a difference that this is used without a label. So the constructor does not have "key" and "longkey" parameters, and the order that is passed is important.
+### Argument\<std::vector\<T\>\>
+ Argument\<std::vector\<T\>\> is similer to Option\<std::vector\<T\>\>, this is accept variable arguments. Because of the arguments order is important, you must set this to the last of arguments.
 
 ## Example
  See "main.cpp" 
