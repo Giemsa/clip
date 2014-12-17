@@ -16,6 +16,12 @@ int main(int argc, const char *argv[])
         false                  // default value (if you specify default value, this option is optional)
     );
 
+    // create argument(variadic argument)
+    clip::Argument<std::vector<int> > numbers(
+        "numbers",
+        "a list of numbers"
+    );
+
     // register option(s) to parser.
     // if you use C++11, add is defined as variadic template,
     // so you can register options at one time.
@@ -32,26 +38,29 @@ int main(int argc, const char *argv[])
             'c',
             "arg3",
             "flag argument 3"
-        )
+        ),
+        numbers
     );
 
     /*
     // C++98
-    parser.add(flag);
-    parser.add(
-        clip::Option<bool>(
-            'b',
-            "arg2",
-            "flag argument 2"
+    parser
+        .add(flag)
+        .add(
+            clip::Option<bool>(
+                'b',
+                "arg2",
+                "flag argument 2"
+            )
         )
-    );
-    parser.add(
-        clip::Option<bool>(
-            'c',
-            "arg3",
-            "flag argument 3"
+        .add(
+            clip::Option<bool>(
+                'c',
+                "arg3",
+                "flag argument 3"
+            )
         )
-    );
+        .add(numbers);
     */
 
     // parse command line arguments.
@@ -62,16 +71,18 @@ int main(int argc, const char *argv[])
         std::cout << std::boolalpha << flag.getValue() << "\n";
 
         // get value from Parser using index
-        std::cout << std::boolalpha << parser.getValue<bool>(0) << "\n";
+        std::cout << std::boolalpha << parser.getOption<bool>(0) << "\n";
 
         // get value from Parser using short arg name
-        std::cout << std::boolalpha << parser.getValue<bool>('b') << "\n";
+        std::cout << std::boolalpha << parser.getOption<bool>('b') << "\n";
 
         // get value from Parser using long arg name
-        std::cout << std::boolalpha << parser.getValue<bool>("arg3") << "\n\n";
+        std::cout << std::boolalpha << parser.getOption<bool>("arg3") << "\n\n";
 
-        // getUnlabeledArgs returns unlabeled arguments
-        for(const char *arg : parser.getUnlabeledArgs())
+        // get arguments
+        // parser.getArgument<std::vector<int> >(0)
+        // parser.getArgument<std::vector<int> >("numbers")
+        for(int arg : numbers.getValue())
         {
             std::cout << arg << "\n";
         }

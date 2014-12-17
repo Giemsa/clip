@@ -48,51 +48,67 @@ namespace clip
         template<typename T>
         struct TypeID final
         {
-            static const std::size_t getUID()
-            {
-                return reinterpret_cast<std::size_t>(&getUID);
-            }
+            static const std::size_t getUID() { return reinterpret_cast<std::size_t>(&getUID); }
         };
 
-        class OptionBase
+        class Base
         {
-            friend class KeyComparator;
-            friend class LongKeyComparator;
-            friend class clip::Parser;
-            friend class KeySort;
+            friend clip::Parser;
         private:
             std::size_t uid_;
+            std::string name_, desc_;
             bool optional_, set_, ref_;
-            char key_;
-            std::string longkey_, desc_, name_;
 
             template<typename T>
             bool is() const { return uid_ == TypeID<T>::getUID(); }
-
+            std::size_t getUID() const { return uid_; }
+            bool isSet() const { return set_; }
+            virtual void buildArguments(std::ostringstream &oss) const = 0;
         protected:
             bool used(const bool f) { return set_ = !f; }
-            bool isSet() const { return set_; }
-            std::size_t getUID() const { return uid_; }
-            virtual void buildArguments(std::ostringstream &oss) const = 0;
+        public:
+            Base(const std::size_t uid, const char *name, const char *desc, const bool optional)
+            : uid_(uid), name_(name), desc_(desc), ref_(false), set_(false), optional_(optional)
+            { }
+            virtual ~Base() { }
+
             virtual bool setValue(const char *value) = 0;
             virtual bool isMultiArg() const { return false; }
+            const std::string &getName() const { return name_; }
+            const std::string &getDesc() const { return desc_; }
+            bool isOptional() const { return optional_; }
+        };
+
+        class OptionBase : public Base
+        {
+            friend class clip::Parser;
+        private:
+            char key_;
+            std::string longkey_;
 
         public:
             OptionBase(
                 const std::size_t uid, const char key, const char *longkey, const char *name,
                 const char *desc, const bool optional
             )
-            : uid_(uid), optional_(optional), set_(false), ref_(false)
-            , key_(key), longkey_(longkey), desc_(desc), name_(name)
+            : Base(uid, name, desc, optional), key_(key), longkey_(longkey)
             { }
 
             virtual ~OptionBase() { }
 
             char getKey() const { return key_; }
             const std::string &getLongKey() const { return longkey_; }
-            const std::string &getName() const { return name_; }
-            const std::string &getDesc() const { return desc_; }
-            bool isOptional() const { return optional_; }
+        };
+
+        class ArgumentBase : public Base
+        {
+            friend class clip::Parser;
+        public:
+            ArgumentBase(const std::size_t uid, const char *name, const char *desc, const bool optional)
+            : Base(uid, name, desc, optional)
+            { }
+
+            virtual ~ArgumentBase() { }
         };
 
         /* key comparator */
@@ -102,11 +118,7 @@ namespace clip
             char key_;
         public:
             KeyComparator(const char key) : key_(key) { }
-
-            bool operator()(const OptionBase *option) const
-            {
-                return key_ == option->key_;
-            }
+            bool operator()(const OptionBase *option) const { return key_ == option->getKey(); }
         };
 
         class LongKeyComparator
@@ -115,19 +127,21 @@ namespace clip
             const char *key_;
         public:
             LongKeyComparator(const char *key) : key_(key) { }
+            bool operator()(const OptionBase *option) const { return key_ == option->getLongKey(); }
+        };
 
-            bool operator()(const OptionBase *option) const
-            {
-                return key_ == option->longkey_;
-            }
+        class NameComparator
+        {
+        private:
+            const char *name_;
+        public:
+            NameComparator(const char *name) : name_(name) { }
+            bool operator()(const ArgumentBase *arg) const { return name_ == arg->getName(); }
         };
 
         struct KeySort
         {
-            bool operator()(const OptionBase *lhs, const OptionBase *rhs) const
-            {
-                return lhs->key_ < rhs->key_;
-            }
+            bool operator()(const OptionBase *lhs, const OptionBase *rhs) const { return lhs->getKey() < rhs->getKey(); }
         };
 
         struct Separator
@@ -152,14 +166,8 @@ namespace clip
 
         void buildArguments(std::ostringstream &oss) const override
         {
-            if(isOptional())
-            {
-                oss << "[-" << getKey() << " <" << getName() << ">] ";
-            }
-            else
-            {
-                oss << "-" << getKey() << " <" << getName() << "> ";
-            }
+            if(isOptional()) { oss << "[-" << getKey() << " <" << getName() << ">] "; }
+            else             { oss <<  "-" << getKey() << " <" << getName() << "> ";  }
         }
 
     public:
@@ -191,14 +199,8 @@ namespace clip
 
         void buildArguments(std::ostringstream &oss) const override
         {
-            if(isOptional())
-            {
-                oss << "[-" << getKey() << "] ";
-            }
-            else
-            {
-                oss << "-" << getKey() << " ";
-            }
+            if(isOptional()) { oss << "[-" << getKey() << "] "; }
+            else             { oss <<  "-" << getKey() << " "; }
         }
 
     public:
@@ -233,14 +235,8 @@ namespace clip
 
         void buildArguments(std::ostringstream &oss) const override
         {
-            if(isOptional())
-            {
-                oss << "[-" << getKey() << " <" << getName() << "...>] ";
-            }
-            else
-            {
-                oss << "-" << getKey() << " <" << getName() << "...> ";
-            }
+            if(isOptional()) { oss << "[-" << getKey() << " <" << getName() << "...>] "; }
+            else             { oss <<  "-" << getKey() << " <" << getName() << "...> ";  }
         }
 
         bool isMultiArg() const override { return true; }
@@ -258,10 +254,76 @@ namespace clip
         std::vector<T> getValue() const { return value_; }
     };
 
+    template<typename T>
+    class Argument final : public detail::ArgumentBase
+    {
+    private:
+        T value_, defaultValue_;
+
+        bool setValue(const char *value) override
+        {
+            std::stringstream ss(value);
+            ss >> value_;
+            return used(ss.fail());
+        }
+
+        void buildArguments(std::ostringstream &oss) const override
+        {
+            if(isOptional()) { oss << "[" << getName() << "] "; }
+            else             { oss <<        getName() << " ";  }
+        }
+    public:
+        Argument(const char *name, const char *desc)
+        : ArgumentBase(detail::TypeID<T>::getUID(), name, desc, false)
+        , value_(T()), defaultValue_(T())
+        { }
+
+        Argument(const char *name, const char *desc, const T &defaultValue)
+        : ArgumentBase(detail::TypeID<T>::getUID(), name, desc, true)
+        , value_(T()), defaultValue_(defaultValue)
+        { }
+
+        T getValue() const { return value_; }
+    };
+
+    template<typename T>
+    class Argument<std::vector<T> > final : public detail::ArgumentBase
+    {
+    private:
+        std::vector<T> value_, defaultValue_;
+
+        bool isMultiArg() const override { return true; }
+        bool setValue(const char *value) override
+        {
+            T tmp;
+            std::stringstream ss(value);
+            ss >> tmp;
+            value_.push_back(tmp);
+            return used(ss.fail());
+        }
+
+        void buildArguments(std::ostringstream &oss) const override
+        {
+            if(isOptional()) { oss << "[" << getName() << "...] "; }
+            else             { oss <<        getName() << "... ";  }
+        }
+    public:
+        Argument(const char *name, const char *desc)
+        : ArgumentBase(detail::TypeID<std::vector<T> >::getUID(), name, desc, false)
+        { }
+
+        Argument(const char *name, const char *desc, const std::vector<T> &defaultValue)
+        : ArgumentBase(detail::TypeID<std::vector<T> >::getUID(), name, desc, true)
+        , defaultValue_(defaultValue)
+        { }
+
+        std::vector<T> getValue() const { return value_; }
+    };
+
     class Parser final
     {
         typedef std::vector<detail::OptionBase *> OptionList;
-        typedef std::vector<const char *> UnlabeledList;
+        typedef std::vector<detail::ArgumentBase *> ArgumentList;
         enum ArgType
         {
             ArgType_Value,
@@ -270,30 +332,21 @@ namespace clip
         };
 
     private:
-        std::string description_;
-        std::string appName_;
+        std::string description_, appName_, usage_;
         std::ostringstream errorMsg_;
         OptionList options_;
-        UnlabeledList unlabeldArgs_;
-        std::string usage_;
-        bool dirty_;
-        bool showErrors_;
+        ArgumentList arguments_;
+        bool dirty_, showErrors_, varg_;
 
-        void clear()
+        template<typename T>
+        void clear(T &list)
         {
-            for(
-                OptionList::const_iterator it = options_.begin();
-                it != options_.end();
-                ++it
-            )
+            for(typename T::const_iterator it = list.begin(); it != list.end(); ++it)
             {
-                if(!(*it)->ref_)
-                {
-                    delete *it;
-                }
+                if(!(*it)->ref_) { delete *it; }
             }
 
-            options_.clear();
+            list.clear();
         }
 
         void init()
@@ -316,37 +369,22 @@ namespace clip
             );
         }
 
-        detail::OptionBase *findByKey(const char key) const
+        template<typename T, typename U>
+        typename T::value_type find(const T &begin, const T &end, const U& comp) const
         {
-            OptionList::const_iterator it = std::find_if(options_.begin(), options_.end(), detail::KeyComparator(key));
-            if(it == options_.end())
-            {
-                return nullptr;
-            }
-
-            return *it;
+            const T it = std::find_if(begin, end, comp);
+            return it == end ? nullptr : *it;
         }
 
-        detail::OptionBase *findByLongKey(const char *key) const
-        {
-            OptionList::const_iterator it = std::find_if(options_.begin(), options_.end(), detail::LongKeyComparator(key));
-            if(it == options_.end())
-            {
-                return nullptr;
-            }
-
-            return *it;
-        }
+        detail::OptionBase *findByKey(const char key) const { return find(options_.begin(), options_.end(), detail::KeyComparator(key)); }
+        detail::OptionBase *findByLongKey(const char *key) const { return find(options_.begin(), options_.end(), detail::LongKeyComparator(key)); }
+        detail::ArgumentBase *findByName(const char *name) const { return find(arguments_.begin(), arguments_.end(), detail::NameComparator(name)); }
 
         ArgType checkType(const char *key) const
         {
             if(*key == '-')
             {
-                if(*++key == '-')
-                {
-                    return ArgType_LongKey;
-                }
-
+                if(*++key == '-') { return ArgType_LongKey; }
                 return ArgType_Key;
             }
 
@@ -436,11 +474,7 @@ namespace clip
 
         bool end()
         {
-            if(showHelp())
-            {
-                return true;
-            }
-
+            if(showHelp()) { return true; }
             const bool r = getErrorMessage().empty();
             if(showErrors_ && !r)
             {
@@ -450,33 +484,66 @@ namespace clip
             return r;
         }
 
-        template<typename T>
-        T getValue(const detail::OptionBase *option) const throw(std::bad_cast)
+        template<typename T, typename U>
+        T getValue(const detail::Base *base) const throw(std::bad_cast)
         {
-            if(!option->is<T>())
+            if(!base->is<T>()) { throw std::bad_cast(); }
+            return std::move(static_cast<const U *>(base)->getValue());
+        }
+
+        Parser &add(detail::OptionBase *option) throw(std::runtime_error)
+        {
+            if(!findByKey(option->getKey()) && !findByLongKey(option->getLongKey().c_str()))
             {
-                throw std::bad_cast();
+                options_.push_back(option);
+                dirty_ = true;
+            }
+            else
+            {
+                throw std::runtime_error("key is already registered in option list.");
             }
 
-            return std::move(static_cast<const Option<T> *>(option)->getValue());
+            return *this;
+        }
+
+        Parser &add(detail::ArgumentBase *arg) throw(std::runtime_error)
+        {
+            if(varg_) { throw std::runtime_error("argument added after variable arguments."); }
+            if(!findByName(arg->getName().c_str()))
+            {
+                arguments_.push_back(arg);
+                if(arg->isMultiArg()) { varg_ = true; }
+                dirty_ = true;
+            }
+            else
+            {
+                throw std::runtime_error("name is already registered in argument list.");
+            }
+
+            return *this;
         }
     public:
         Parser()
-        : dirty_(true), showErrors_(false)
+        : dirty_(true), showErrors_(false), varg_(false)
         { init(); }
 
         Parser(const char *desc)
-        : description_(desc), dirty_(true), showErrors_(true)
+        : description_(desc), dirty_(true), showErrors_(true), varg_(false)
         { init(); }
 
         Parser(const char *desc, const bool showErrors)
-        : description_(desc), dirty_(true), showErrors_(showErrors)
+        : description_(desc), dirty_(true), showErrors_(showErrors), varg_(false)
         { init(); }
 
-        ~Parser() { clear(); }
+        ~Parser()
+        {
+            clear(options_);
+            clear(arguments_);
+        }
 
         bool parse(const int argc, const char *argv[])
         {
+            ArgumentList::iterator it = arguments_.begin();
             setAppName(argv[0]);
 
             for(int i = 1; i < argc; ++i)
@@ -485,10 +552,19 @@ namespace clip
                 switch(checkType(arg))
                 {
                     case ArgType_Value:
-                        // set normal args
-                        unlabeldArgs_.push_back(arg);
+                        {
+                            if(arguments_.empty()) { break; }
+                            if(it == arguments_.end())
+                            {
+                                detail::ArgumentBase *a = *(it - 1);
+                                if(a->isMultiArg()) { a->setValue(arg); }
+                            }
+                            else
+                            {
+                                (*it++)->setValue(arg);
+                            }
+                        }
                         break;
-
                     case ArgType_Key:
                         {
                             const char *keys = arg + 1;
@@ -532,7 +608,6 @@ namespace clip
 
                         }
                         break;
-
                     case ArgType_LongKey:
                         {
                             bool r;
@@ -550,7 +625,17 @@ namespace clip
                 const detail::OptionBase *option = *it;
                 if(!option->isSet() && !option->isOptional())
                 {
-                    errorMsg_ << "-" << option->getKey() << "(" << option->getLongKey() << ") should be specified." << "\n";
+                    errorMsg_ << "-" << option->getKey() << "(" << option->getLongKey() << ") should be specified.\n";
+                    return end();
+                }
+            }
+
+            for(ArgumentList::const_iterator it = arguments_.begin(); it != arguments_.end(); ++it)
+            {
+                const detail::ArgumentBase *arg = *it;
+                if(!arg->isSet() && !arg->isOptional())
+                {
+                    errorMsg_ << arg->getName() << " should be specified.\n";
                     return end();
                 }
             }
@@ -568,33 +653,57 @@ namespace clip
                 // sort keys
                 OptionList sorted(options_);
                 std::sort(sorted.begin(), sorted.end(), detail::KeySort());
-
-                std::size_t len = 0;
+                std::size_t olen = 0;
                 for(OptionList::const_iterator it = sorted.begin(); it != sorted.end(); ++it)
                 {
                     const detail::OptionBase *option = *it;
                     option->buildArguments(oss);
 
-
-                    len = std::max(len, option->getLongKey().size());
+                    olen = std::max(olen, option->getLongKey().size());
                 }
 
-                len += 2;
-                oss << "\n\nOptions:\n";
-
-                for(OptionList::const_iterator it = sorted.begin(); it != sorted.end(); ++it)
+                std::size_t alen = 0;
+                for(ArgumentList::const_iterator it = arguments_.begin(); it != arguments_.end(); ++it)
                 {
-                    const detail::OptionBase *option = *it;
-                    oss <<
-                        "    -" << option->getKey() << "  " <<
-                        std::setw(static_cast<int>(len)) << std::left <<
-                        ("--" + option->getLongKey()) << "  ";
-                    if(option->isOptional() && option->getKey() != 'h')
-                    {
-                        oss << "(optional) ";
-                    }
+                    const detail::ArgumentBase *arg = *it;
+                    arg->buildArguments(oss);
 
-                    oss << option->getDesc() << "\n";
+                    alen = std::max(alen, arg->getName().size());
+                }
+
+                // build arguments
+                {
+                    alen += 2;
+                    oss << "\n\nArguments:\n";
+
+                    for(ArgumentList::const_iterator it = arguments_.begin(); it != arguments_.end(); ++it)
+                    {
+                        const detail::ArgumentBase *arg = *it;
+                        oss << "    " << std::setw(static_cast<int>(alen)) << std::left << arg->getName() << "  ";
+                        if(arg->isOptional()) { oss << "(optional) "; }
+                        oss << arg->getDesc() << "\n";
+                    }
+                }
+
+                // build options
+                {
+                    olen += 2;
+                    oss << "\nOptions:\n";
+
+                    for(OptionList::const_iterator it = sorted.begin(); it != sorted.end(); ++it)
+                    {
+                        const detail::OptionBase *option = *it;
+                        oss <<
+                            "    -" << option->getKey() << "  " <<
+                            std::setw(static_cast<int>(olen)) << std::left <<
+                            ("--" + option->getLongKey()) << "  ";
+                        if(option->isOptional() && option->getKey() != 'h')
+                        {
+                            oss << "(optional) ";
+                        }
+
+                        oss << option->getDesc() << "\n";
+                    }
                 }
 
                 oss << "\n" << description_ << std::endl;
@@ -608,16 +717,21 @@ namespace clip
         void showUsage() { std::cout << getUsage() << std::endl; }
         std::string getErrorMessage() const { return errorMsg_.str(); }
         std::string getAppName() const { return appName_; }
-        std::vector<const char *> getUnlabeledArgs() const { return unlabeldArgs_; }
 
         template<typename T>
-        T getValue(const int index) const { return getValue<T>(options_.at(index + 1)); }
+        T getOption(const int index) const { return getValue<T, Option<T> >(options_.at(index + 1)); }
 
         template<typename T>
-        T getValue(const char key) const { return getValue<T>(findByKey(key)); }
+        T getOption(const char key) const { return getValue<T, Option<T> >(findByKey(key)); }
 
         template<typename T>
-        T getValue(const char *longkey) const { return getValue<T>(findByLongKey(longkey)); }
+        T getOption(const char *longkey) const { return getValue<T, Option<T> >(findByLongKey(longkey)); }
+
+        template<typename T>
+        T getArgument(const int index) const { return getValue<T, Argument<T> >(arguments_.at(index)); }
+
+        template<typename T>
+        T getArgument(const char *name) const { return getValue<T, Argument<T> >(findByName(name)); }
 
 #ifdef MW_CPP11
         template<
@@ -632,39 +746,26 @@ namespace clip
         }
 #endif
 
-        /* const */
+        /* options */
         template<typename T>
-        Parser &add(const Option<T> &option) throw(std::runtime_error)
-        {
-            if(!findByKey(option.getKey()) && !findByLongKey(option.getLongKey().c_str()))
-            {
-                options_.push_back(new Option<T>(option));
-                dirty_ = true;
-            }
-            else
-            {
-                throw std::runtime_error("key already registered.");
-            }
+        Parser &add(const Option<T> &option) { return add(new Option<T>(option)); }
 
-            return *this;
+        template<typename T>
+        Parser &add(Option<T> &option)
+        {
+            option.ref_ = true;
+            return add(&option);
         }
 
-        /* non const */
+        /* arguments */
         template<typename T>
-        Parser &add(Option<T> &option) throw(std::runtime_error)
-        {
-            if(!findByKey(option.getKey()) && !findByLongKey(option.getLongKey().c_str()))
-            {
-                option.ref_ = true;
-                options_.push_back(&option);
-                dirty_ = true;
-            }
-            else
-            {
-                throw std::runtime_error("key already registered.");
-            }
+        Parser &add(const Argument<T> &arg) { return add(new Argument<T>(arg)); }
 
-            return *this;
+        template<typename T>
+        Parser &add(Argument<T> &arg)
+        {
+            arg.ref_ = true;
+            return add(&arg);
         }
     };
 }
