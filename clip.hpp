@@ -27,7 +27,9 @@
 
 #if __cplusplus > 199711L
 #   define MW_CPP11
+#   define ENUM_ELEM(T, E) T :: E
 #else
+#   define ENUM_ELEM(T, E) T ## _ ## E
 #   define final
 #   define override
 #   define nullptr NULL
@@ -42,6 +44,22 @@
 namespace clip
 {
     class Parser;
+
+#ifdef MW_CPP11
+    enum class ParseResult
+    {
+        Success,
+        Failure,
+        HelpShown
+    };
+#else
+    enum ParseResult
+    {
+        ParseResult_Success,
+        ParseResult_Failure,
+        ParseResult_HelpShown
+    };
+#endif
 
     namespace detail
     {
@@ -391,7 +409,7 @@ namespace clip
             return ArgType_Value;
         }
 
-        bool parseArguments(bool  &r, int &i, const int argc, const char *argv[], detail::OptionBase *option, const char *key)
+        bool parseArguments(ParseResult &r, int &i, const int argc, const char *argv[], detail::OptionBase *option, const char *key)
         {
             if(!option)
             {
@@ -431,7 +449,7 @@ namespace clip
                     const char *value = argv[i];
                     if(checkType(value) == ArgType_Value)
                     {
-                        if(!option->setValue(value) || option->isSet())
+                        if(option->isSet() || !option->setValue(value))
                         {
                             r = fewArgError(option);
                             return true;
@@ -460,28 +478,28 @@ namespace clip
             return false;
         }
 
-        bool fewArgError(const detail::OptionBase *option)
+        ParseResult fewArgError(const detail::OptionBase *option)
         {
             errorMsg_ << "argument should be specified for -" << option->getKey() << "(" << option->getLongKey() << ")"<< "\n";
             return end();
         }
 
-        bool invalidTypeError(const detail::OptionBase *option)
+        ParseResult invalidTypeError(const detail::OptionBase *option)
         {
             errorMsg_ << "invalid type was specified for -" << option->getKey() << "(" << option->getLongKey() << ")\n";
             return end();
         }
 
-        bool end()
+        ParseResult end()
         {
-            if(showHelp()) { return true; }
+            if(showHelp()) { return ENUM_ELEM(ParseResult, HelpShown); }
             const bool r = getErrorMessage().empty();
             if(showErrors_ && !r)
             {
                 std::cerr << getErrorMessage() << std::endl;
             }
 
-            return r;
+            return r ? ENUM_ELEM(ParseResult, Success) : ENUM_ELEM(ParseResult, Failure);
         }
 
         template<typename T, typename U>
@@ -541,7 +559,7 @@ namespace clip
             clear(arguments_);
         }
 
-        bool parse(const int argc, const char *argv[])
+        ParseResult parse(const int argc, const char *argv[])
         {
             ArgumentList::iterator it = arguments_.begin();
             setAppName(argv[0]);
@@ -571,7 +589,7 @@ namespace clip
                             if(strlen(keys) == 1)
                             {
                                 // argument mode
-                                bool r;
+                                ParseResult r;
                                 char kn[2] = { *keys, 0 };
                                 if(parseArguments(r, i, argc, argv, findByKey(*keys), kn))
                                 {
@@ -610,7 +628,7 @@ namespace clip
                         break;
                     case ArgType_LongKey:
                         {
-                            bool r;
+                            ParseResult r;
                             if(parseArguments(r, i, argc, argv, findByLongKey(arg + 2), arg))
                             {
                                 return r;
@@ -741,8 +759,8 @@ namespace clip
         >
         Parser &add(T &&t, Args &&...args) throw(std::runtime_error)
         {
-            add(static_cast<T &&>(t));
-            return add(static_cast<Args &&>(args)...);
+            add(std::forward<T>(t));
+            return add(std::forward<Args>(args)...);
         }
 #endif
 
@@ -775,6 +793,7 @@ namespace clip
 #   undef override
 #   undef nullptr
 #endif
+#undef ENUM_ELEM
 #undef MW_CPP11
 
 #endif

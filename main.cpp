@@ -64,37 +64,41 @@ int main(int argc, const char *argv[])
     */
 
     // parse command line arguments.
-    // parse returns true if parse arguments succeeded.
-    if(parser.parse(argc, argv))
+    const clip::ParseResult result = parser.parse(argc, argv);
+    switch(result)
     {
-        // get argument value from Option<T>
-        std::cout << std::boolalpha << flag.getValue() << "\n";
-
-        // get value from Parser using index
-        std::cout << std::boolalpha << parser.getOption<bool>(0) << "\n";
-
-        // get value from Parser using short arg name
-        std::cout << std::boolalpha << parser.getOption<bool>('b') << "\n";
-
-        // get value from Parser using long arg name
-        std::cout << std::boolalpha << parser.getOption<bool>("arg3") << "\n\n";
-
-        // get arguments
-        // parser.getArgument<std::vector<int> >(0)
-        // parser.getArgument<std::vector<int> >("numbers")
-        for(int arg : numbers.getValue())
-        {
-            std::cout << arg << "\n";
-        }
-
-        std::cout << std::endl;
+    case clip::ParseResult::HelpShown:
+    // case clip::ParseResult_HelpShown: // if C++98
+        return 0;
+    case clip::ParseResult::Failure:
+    // case clip::ParseResult_Failure: // if C++98
+        return -1;
+    case clip::ParseResult::Success:
+    // case clip::ParseResult_Success: // if C++98
+        break;
     }
-    else
+
+    // get argument value from Option<T>
+    std::cout << std::boolalpha << flag.getValue() << "\n";
+
+    // get value from Parser using index
+    std::cout << std::boolalpha << parser.getOption<bool>(0) << "\n";
+
+    // get value from Parser using short arg name
+    std::cout << std::boolalpha << parser.getOption<bool>('b') << "\n";
+
+    // get value from Parser using long arg name
+    std::cout << std::boolalpha << parser.getOption<bool>("arg3") << "\n\n";
+
+    // get arguments
+    // parser.getArgument<std::vector<int> >(0)
+    // parser.getArgument<std::vector<int> >("numbers")
+    for(int arg : numbers.getValue())
     {
-        // parse error
-        // show usage
-        parser.showUsage();
+        std::cout << arg << "\n";
     }
+
+    std::cout << std::endl;
 
     return 0;
 }
